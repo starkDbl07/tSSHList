@@ -11,7 +11,7 @@ wWidth = 40
 searchLine = "S:"
 searchLine="⧃ "
 searchLineLength = len(searchLine)
-lastPointer = -1
+curPointer = -1
 totalEntries = 0
 exitHost = ""
 
@@ -44,6 +44,18 @@ def parseSSHConfig():
 	sshConfigFile.close()
 	return map(lambda host: host.replace("Host ",""), filter(lambda line: line.startswith("Host"), sshConfig.split("\n")))
 
+def highlighHost(pos):
+	global curPointer, totalEntries
+	if curPointer > -1:
+		winList.chgat(curPointer, 0, -1, cs.A_NORMAL)
+	if pos < 0 and totalEntries > 0:
+		pos = totalEntries
+	if pos > -1:	
+		if pos > totalEntries:
+			pos = 0
+		curPointer = pos
+		winList.chgat(pos, 0, -1, cs.A_STANDOUT)
+
 def updateHostList():
 	global searchHosts, hosts
 	totalEntries = len(searchHosts) - 1
@@ -53,11 +65,11 @@ def updateHostList():
 	winList.refresh()
 
 def search():
-	global searchLine, searchLineLength, lastPointer, searchHosts
+	global searchLine, searchLineLength, searchHosts, totalEntries
 	searchString = ""
 	# Space
-	if lastPointer >= 0:
-		winList.chgat(lastPointer, 0, -1, cs.A_NORMAL)
+	if curPointer >= 0:
+		winList.chgat(curPointer, 0, -1, cs.A_NORMAL)
 	winList.refresh()
 	cs.echo()
 	winSearch.bkgd(" ")
@@ -72,46 +84,26 @@ def search():
 			winSearch.clear()
 			winSearch.addstr(searchLine)
 			winSearch.refresh()
-			winList.chgat(lastPointer, 0, -1, cs.A_STANDOUT)
-			winList.refresh()
 			cs.noecho()
 			break
 		else:
 			searchString = searchString + chr(key)
 			if len(searchString) > 2:
 				searchHosts = filter(lambda host: host.find(searchString) > -1, hosts)
-				lastPointer = -1
+				totalEntries = len(searchHosts) - 1
 				updateHostList()
 
 
 def navigateDown():
-	global lastPointer, totalEntries
-	if lastPointer >= 0:
-		winList.chgat(lastPointer,0, -1, cs.A_NORMAL)
-
-	if lastPointer >= totalEntries:
-		lastPointer = 0
-	else:
-		lastPointer = lastPointer + 1
-	winList.move(lastPointer,0)
-	winList.chgat(lastPointer,0, -1, cs.A_STANDOUT)
-	winList.refresh()
+	global curPointer
+	highlighHost(curPointer+1)
 
 def navigateUp():
-	global lastPointer, totalEntries
-	if lastPointer >= 0:
-		winList.chgat(lastPointer,0, -1, cs.A_NORMAL)
-
-	if lastPointer == 0:
-		lastPointer = totalEntries
-	else:
-		lastPointer = lastPointer - 1
-	winList.move(lastPointer,0)
-	winList.chgat(lastPointer,0, -1, cs.A_STANDOUT)
-	winList.refresh()
+	global curPointer
+	highlighHost(curPointer-1)
 
 def navigate():
-	global totalEntries, hosts, lastPointer, exitHost
+	global totalEntries, hosts, lastPointer, exitHost, searchHosts
 	while True:
 		key=winList.getch()
 		if key == ord("s"):
@@ -121,7 +113,7 @@ def navigate():
 		if key == ord("k"):
 			navigateUp()
 		if key == ord("a"):
-			exitHost = hosts[winList.getyx()[0]]
+			exitHost = searchHosts[winList.getyx()[0]]
 			break
 		if key == ord("q"):
 			break
@@ -132,6 +124,7 @@ searchHosts = hosts[0:]
 totalEntries = len(searchHosts) - 1
 
 updateHostList()
+highlighHost(0)
 navigate()
 
 cs.endwin()
