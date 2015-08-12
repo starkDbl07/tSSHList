@@ -60,10 +60,6 @@ class ui:
 		self.placeWindows()
 		self.updateHostList(hostList)
 		self.nextHost()
-		self.winList.refresh()
-		self.winList.getch()
-		self.winSearchText.move(0,0)
-		cs.curs_set(1)
 
 	def placeWindows(self):
 		# Get object content/screen height and widths
@@ -90,7 +86,7 @@ class ui:
 
 		# Create SearchIcon Window
 		searchIconSection = searchSection.derwin(self.searchSectionHeight, self.searchIconWidth, 0,0)
-		searchIconSection.addstr(1,1,self.searchIcon)
+		searchIconSection.addstr(1,0,self.searchIcon)
 
 		# Create SearchText Wrapper Window
 		searchTextSection = searchSection.derwin(self.searchSectionHeight, cWidth - self.searchIconWidth, 0, self.searchIconWidth)
@@ -101,7 +97,7 @@ class ui:
 
 		# Create HostList Window and its Properties
 		self.hostListLimit = cHeight - self.searchSectionHeight
-		winList = winContent.derwin(self.hostListLimit, cWidth, self.searchSectionHeight, 0)
+		winList = winContent.derwin(self.hostListLimit, cWidth-2, self.searchSectionHeight, 1)
 		winList.bkgd(" ", cs.color_pair(1))
 
 		# Refresh all windows
@@ -121,20 +117,23 @@ class ui:
 
 
 	def nextHost(self):
+		if self.curPointer > self.totalEntries -1:
+			self.curPointer = -1
+			self.winWrapper.chgat(self.totalEntries + self.searchSectionHeight,0,-1,cs.color_pair(1))
+		if self.curPointer > -1:
+			self.winWrapper.chgat(self.curPointer + self.searchSectionHeight,0,-1,cs.color_pair(1))
 		self.curPointer = self.curPointer + 1
 		self.winWrapper.chgat(self.curPointer + self.searchSectionHeight,0,-1,cs.color_pair(2))
 		self.winWrapper.refresh()
 
-	def highlighHost(self, pos):
+	def prevHost(self):
 		if self.curPointer > -1:
-			self.winList.chgat(self.curPointer, 0, -1, cs.A_NORMAL)
-		if pos < 0 and self.totalEntries > 0:
-			pos = self.totalEntries
-		if pos > -1:	
-			if pos > self.totalEntries:
-				pos = 0
-			self.curPointer = pos
-			self.winList.chgat(pos, 0, -1, cs.A_STANDOUT)
+			self.winWrapper.chgat(self.curPointer + self.searchSectionHeight,0,-1,cs.color_pair(1))
+		if self.curPointer < 1:
+			self.curPointer = self.totalEntries + 1
+		self.curPointer = self.curPointer - 1
+		self.winWrapper.chgat(self.curPointer + self.searchSectionHeight,0,-1,cs.color_pair(2))
+		self.winWrapper.refresh()
 
 	def updateHostList(self, hosts):
 		limitedHosts = hosts[0:self.hostListLimit-1]
@@ -238,6 +237,14 @@ cs.init_pair(1, cs.COLOR_BLACK, cs.COLOR_WHITE)
 cs.init_pair(2, cs.COLOR_WHITE, cs.COLOR_BLUE)
 
 ui = ui(stdscr, hosts.getAllHostList())
+while True:
+	key = ui.winList.getch()
+	if key == ord('q'):
+		break
+	elif key == ord('j'):
+		ui.nextHost()
+	elif key == ord('k'):
+		ui.prevHost()
 
 #ui.searchHosts = hosts.getAllHostList()[0:]
 #ui.updateHostList()
