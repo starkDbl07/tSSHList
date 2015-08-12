@@ -4,167 +4,220 @@
 import curses as cs
 import locale
 import os
+import sys
 
 locale.setlocale(locale.LC_ALL,"en_US.UTF-8")
 
-wWidth = 40
-searchLine = "S:"
-searchLine="⧃ "
-curPointer = -1
-totalEntries = 0
-exitHost = ""
-accessType = 0
 
 # KEYS
 key_tab = 9
 key_enter = 10
 key_backspace = 127
 
+
+class hostData:
+	hosts = []
+
+	def __init__(self, limit=30):
+		self.hosts = self.parseSSHConfig()
+		self.limit = limit
+
+	def parseSSHConfig(self):
+		"""parse .ssh/config file to get hostlist """
+		sshConfigFile = open("/Users/abhishek/.ssh/config", "r")
+		sshConfig = sshConfigFile.read()
+		sshConfigFile.close()
+		return map(lambda host: host.replace("Host ",""), filter(lambda line: line.startswith("Host"), sshConfig.split("\n")))
+
+	def getAllHostList(self):
+		return self.hosts[0:self.limit]
+
+	def searchHosts(self, searchString):
+		if searchString != "":
+			hostList = filter(lambda host: host.find(searchString) > -1, self.hosts)
+		else:
+			hostList = self.hosts
+		return hostList[0:self.limit]
+
+class ui:
+	searchSectionHeight = 3
+	searchIconWidth = 3
+
+	def __init__(self, mainScreen, cWidth = 70, cHeight = 20):
+		self.mainScreen = mainScreen
+		self.sHeight, self.sWidth = stdscr.getmaxyx()
+		self.cWidth = cWidth
+		self.cHeight = cHeight
+
+		self.posCenterH = (self.sHeight / 2) - (self.cHeight / 2)
+		self.posCenterW = (self.sWidth / 2) - (self.cWidth / 2)
+
+		mainWin = cs.newwin(cHeight,cWidth+2,self.posCenterH,self.posCenterW-1)
+		mainWin.bkgd(" ", cs.color_pair(1))
+
+		contentWin = mainWin.derwin(cHeight, cWidth, 0, 1)
+		contentWin.bkgd(" ", cs.color_pair(1))
+
+		searchSection = contentWin.derwin(self.searchSectionHeight,cWidth,0,0)
+		searchSection.bkgd(".", cs.color_pair(1))
+
+		searchIconSection = searchSection.derwin(self.searchSectionHeight, self.searchIconWidth, 0,0)
+		searchTextSection = searchSection.derwin(self.searchSectionHeight, cWidth - self.searchIconWidth, 0, self.searchIconWidth)
+		winSearchText = searchTextSection.derwin(1, cWidth - self.searchIconWidth, 1, 0)
+		winSearchText.bkgd(" ");
+
+		winListSection = contentWin.derwin(cHeight - self.searchSectionHeight, cWidth, self.searchSectionHeight, 0)
+		winListSection.bkgd("-", cs.color_pair(1))
+
+		mainWin.refresh()
+		contentWin.refresh()
+		searchSection.refresh()
+		searchIconSection.refresh()
+		searchTextSection.refresh()
+		winSearchText.refresh()
+		winListSection.refresh()
+		mainWin.getch()
+
+		self.mainWin = mainWin
+		self.searchSection = searchSection
+		sys.exit(0)
+
+		self.winSearchSection = cs.newwin(1,cWidth,2,0)
+		self.winSearchSection.addstr(self.searchLine)
+		self.winSearchSection.refresh()
+		self.winSearch = cs.newwin(1,cWidth-2,2,2)
+
+		self.winList = cs.newwin(cHeight,cWidth,4,0)
+
+		self.winTitle.addstr("SSH Hosts")
+
+		self.winSearch.refresh()
+		self.winTitle.refresh()
+
+
+
+	def highlighHost(self, pos):
+		if self.curPointer > -1:
+			self.winList.chgat(self.curPointer, 0, -1, cs.A_NORMAL)
+		if pos < 0 and self.totalEntries > 0:
+			pos = self.totalEntries
+		if pos > -1:	
+			if pos > self.totalEntries:
+				pos = 0
+			self.curPointer = pos
+			self.winList.chgat(pos, 0, -1, cs.A_STANDOUT)
+
+	def updateHostList(self):
+		self.totalEntries = len(self.searchHosts) - 1
+		print self.totalEntries
+		self.winList.clear()
+		for host in self.searchHosts:
+			self.winList.addstr(host + "\n")
+		self.winList.refresh()
+
+	def search(self):
+		searchString = ""
+		# Space
+		if self.curPointer >= 0:
+			self.winList.chgat(self.curPointer, 0, -1, cs.A_NORMAL)
+		self.winList.refresh()
+		cs.echo()
+		self.winSearch.move(0,0)
+		self.winSearch.attron(cs.A_STANDOUT)
+		self.winSearch.chgat(0, 0, -1, cs.A_STANDOUT)
+		self.winSearch.refresh()
+		while True:
+			key = self.winSearch.getch()
+			if key == key_enter or key == key_tab:
+				self.winSearch.attroff(cs.A_STANDOUT)
+				self.winSearch.clear()
+				self.winSearch.refresh()
+				cs.noecho()
+
+				# if search list is empty,list all hosts
+				if len(self.searchHosts) <= 0:
+					self.searchHosts = self.dataObj.getAllHostList()
+					self.updateHostList()
+				break
+			elif key == key_backspace:
+				#winList.addstr("entered")
+				#winList.refresh()
+				cury, curx = self.winSearch.getyx()
+				if curx > 2:
+					self.winSearch.addstr(cury, curx - 3, "   ")
+					self.winSearch.move(cury, curx - 3)
+					searchString = searchString[0:-1]
+				else:
+					self.winSearch.clear()
+					self.winSearch.move(0,0)
+					self.winSearch.attron(cs.A_STANDOUT)
+					self.winSearch.chgat(0, 0, -1, cs.A_STANDOUT)
+					self.winSearch.refresh()
+			else:
+				self.winList.addstr(str(key))
+				self.winList.refresh()
+				searchString = searchString + chr(key)
+			if len(searchString) > 1:
+				self.searchHosts = self.dataObj.searchHosts(searchString)
+				self.updateHostList()
+			else:
+				self.searchHosts = self.dataObj.getAllHostList()
+				self.updateHostList()
+
+
+	def navigateDown(self):
+		self.highlighHost(self.curPointer+1)
+
+	def navigateUp(self):
+		self.highlighHost(self.curPointer-1)
+
+	def navigate(self):
+		self.search()
+		self.winList.move(0,0)
+		self.winList.chgat(0,0,-1,cs.A_STANDOUT)
+		while True:
+			key=self.winList.getch()
+			if key == ord("s") or key == key_tab:
+			    self.search()
+			    self.winList.move(0,0)
+			    self.winList.chgat(0,0,-1,cs.A_STANDOUT)
+			if key == ord("j"):
+				self.navigateDown()
+			if key == ord("k"):
+				self.navigateUp()
+			if key == key_enter or key == ord("a"):
+				self.exitHost = searchHosts[winList.getyx()[0]]
+				break
+			if key == ord("t"):
+				self.accessType = 1
+				self.exitHost = searchHosts[winList.getyx()[0]]
+				break
+			if key == ord("q"):
+				break
+
+
+hosts = hostData()
+
 stdscr = cs.initscr()
 cs.noecho()
 #cs.nocbreak()
 cs.curs_set(0)
 
-winTitle = cs.newwin(1,wWidth,0,0)
-#winTitle.bkgd("*")
+#self.stdscr = stdscr
+cs.start_color()
+cs.init_pair(1, cs.COLOR_BLACK, cs.COLOR_WHITE)
 
-winSearchSection = cs.newwin(1,wWidth,2,0)
-winSearchSection.addstr(searchLine)
-winSearchSection.refresh()
-winSearch = cs.newwin(1,wWidth-2,2,2)
-winSearch.bkgd("-")
+ui = ui(stdscr)
 
-winList = cs.newwin(40,wWidth,4,0)
-#winList.bkgd("*")
-
-winTitle.addstr("SSH Hosts")
-#winList.addstr("test" + "\n")
-#totalEntries = totalEntries + 1
-
-winSearch.refresh()
-winTitle.refresh()
-
-def parseSSHConfig():
-	"""parse .ssh/config file to get hostlist """
-	sshConfigFile = open("/Users/abhishek/.ssh/config", "r")
-	sshConfig = sshConfigFile.read()
-	sshConfigFile.close()
-	return map(lambda host: host.replace("Host ",""), filter(lambda line: line.startswith("Host"), sshConfig.split("\n")))
-
-def highlighHost(pos):
-	global curPointer, totalEntries
-	if curPointer > -1:
-		winList.chgat(curPointer, 0, -1, cs.A_NORMAL)
-	if pos < 0 and totalEntries > 0:
-		pos = totalEntries
-	if pos > -1:	
-		if pos > totalEntries:
-			pos = 0
-		curPointer = pos
-		winList.chgat(pos, 0, -1, cs.A_STANDOUT)
-
-def updateHostList():
-	global searchHosts, hosts
-	totalEntries = len(searchHosts) - 1
-	winList.clear()
-	for host in searchHosts:
-		winList.addstr(host + "\n")
-	winList.refresh()
-
-def search():
-	global searchHosts, totalEntries
-	searchString = ""
-	# Space
-	if curPointer >= 0:
-		winList.chgat(curPointer, 0, -1, cs.A_NORMAL)
-	winList.refresh()
-	cs.echo()
-	winSearch.bkgd(" ")
-	winSearch.move(0,0)
-	winSearch.attron(cs.A_STANDOUT)
-	winSearch.chgat(0, 0, -1, cs.A_STANDOUT)
-	winSearch.refresh()
-	while True:
-		key = winSearch.getch()
-		if key == key_enter or key == key_tab:
-			winSearch.attroff(cs.A_STANDOUT)
-			winSearch.clear()
-			winSearch.refresh()
-			cs.noecho()
-			if len(searchHosts) <= 0:
-				searchHosts = hosts[0:35]
-				updateHostList()
-			break
-		elif key == key_backspace:
-			#winList.addstr("entered")
-			#winList.refresh()
-			cury, curx = winSearch.getyx()
-			if curx > 2:
-				winSearch.addstr(cury, curx - 3, "   ")
-				winSearch.move(cury, curx - 3)
-				searchString = searchString[0:-1]
-			else:
-				winSearch.clear()
-				winSearch.move(0,0)
-				winSearch.attron(cs.A_STANDOUT)
-				winSearch.chgat(0, 0, -1, cs.A_STANDOUT)
-				winSearch.refresh()
-		else:
-			winList.addstr(str(key))
-			winList.refresh()
-			searchString = searchString + chr(key)
-		if len(searchString) > 1:
-			searchHosts = filter(lambda host: host.find(searchString) > -1, hosts)[0:35]
-			totalEntries = len(searchHosts) - 1
-			updateHostList()
-		else:
-			searchHosts = hosts[0:35]
-			updateHostList()
-
-
-def navigateDown():
-	global curPointer
-	highlighHost(curPointer+1)
-
-def navigateUp():
-	global curPointer
-	highlighHost(curPointer-1)
-
-def navigate():
-	global totalEntries, hosts, lastPointer, exitHost, searchHosts, accessType
-	while True:
-		key=winList.getch()
-		if key == ord("s") or key == key_tab:
-		    search()
-		    winList.move(0,0)
-		    winList.chgat(0,0,-1,cs.A_STANDOUT)
-		if key == ord("j"):
-			navigateDown()
-		if key == ord("k"):
-			navigateUp()
-		if key == key_enter or key == ord("a"):
-			exitHost = searchHosts[winList.getyx()[0]]
-			break
-		if key == ord("t"):
-			accessType = 1
-			exitHost = searchHosts[winList.getyx()[0]]
-			break
-		if key == ord("q"):
-			break
-
-
-hosts = parseSSHConfig()
-searchHosts = hosts[0:35]
-totalEntries = len(searchHosts) - 1
-
-updateHostList()
-highlighHost(0)
-navigate()
+#ui.searchHosts = hosts.getAllHostList()[0:]
+#ui.updateHostList()
+#ui.highlighHost(0)
+#ui.navigate()
 
 cs.endwin()
 
 if exitHost != "":
-	if accessType == 0:
-		os.execvp("ssh", ["ssh", exitHost])
+	if ui.accessType == 0:
+		os.execvp("ssh", ["ssh", ui.exitHost])
 	if accessType == 1:
-		os.execvp("telnet", ["telnet", exitHost])
+		os.execvp("telnet", ["telnet", ui.exitHost])
